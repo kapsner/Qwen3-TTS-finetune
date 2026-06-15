@@ -42,7 +42,7 @@ def train():
     global target_speaker_embedding
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--init_model_path", type=str, default="Qwen/Qwen3-TTS-12Hz-1.7B-Base")
+    parser.add_argument("--init_model_path", type=str, default="Qwen/Qwen3-TTS-12Hz-0.6B-Base")
     parser.add_argument("--output_model_path", type=str, default="output")
     parser.add_argument("--train_jsonl", type=str, required=True)
     parser.add_argument("--batch_size", type=int, default=2)

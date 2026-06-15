@@ -24,6 +24,8 @@ import os
 import shutil
 import subprocess
 import sys
+import gc
+import time
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -31,13 +33,10 @@ from typing import List, Dict, Any
 def configure_hf_cache():
     """Configure HuggingFace cache inside venv if available."""
     script_dir = Path(__file__).parent.absolute()
-    hf_cache = script_dir / "venv" / "hf_cache"
+    hf_cache = "/opt/models/hf_cache"
 
-    # Only configure if venv exists
-    if hf_cache.parent.exists():
-        hf_cache.mkdir(parents=True, exist_ok=True)
-        # Only set HF_HOME - let HuggingFace manage subdirectories
-        os.environ.setdefault("HF_HOME", str(hf_cache))
+    # Only set HF_HOME - let HuggingFace manage subdirectories
+    os.environ.setdefault("HF_HOME", str(hf_cache))
 
 
 def get_attention_implementation():
@@ -52,6 +51,7 @@ def get_attention_implementation():
 # Configure HF cache before any HuggingFace imports
 configure_hf_cache()
 
+#os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
 import torchaudio
 from tqdm import tqdm
@@ -68,7 +68,7 @@ class Qwen3TTSPipeline:
         output_dir: str = "./output",
         device: str = "cuda:0",
         tokenizer_model_path: str = "Qwen/Qwen3-TTS-Tokenizer-12Hz",
-        init_model_path: str = "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+        init_model_path: str = "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
         batch_size: int = 2,
         lr: float = 2e-5,
         num_epochs: int = 3,
@@ -203,6 +203,11 @@ class Qwen3TTSPipeline:
         # Load WhisperX model
         print(f"Loading WhisperX model: {self.whisper_model}")
         device = "cuda" if self.device.startswith("cuda") else "cpu"
+        time.sleep(3)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
         model = whisperx.load_model(
             self.whisper_model,
             device=device,
@@ -238,8 +243,11 @@ class Qwen3TTSPipeline:
 
         # Cleanup model
         del model
+        time.sleep(3)
+        gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
         print(f"\nSuccessfully transcribed {len(results)} files")
         return results
@@ -266,10 +274,17 @@ class Qwen3TTSPipeline:
         from qwen_tts import Qwen3TTSTokenizer
 
         # Load tokenizer
+        time.sleep(3)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
         print(f"Loading tokenizer: {self.tokenizer_model_path}")
         tokenizer_12hz = Qwen3TTSTokenizer.from_pretrained(
             self.tokenizer_model_path,
-            device_map=self.device,
+            dtype=torch.bfloat16,
+            attn_implementation=self.attn_implementation,
+            device_map="auto",
         )
 
         # Read and process JSONL
@@ -295,12 +310,26 @@ class Qwen3TTSPipeline:
                 batch_lines.clear()
                 batch_audios.clear()
 
+            time.sleep(3)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.ipc_collect()
+
         # Process remaining
         if len(batch_audios) > 0:
             enc_res = tokenizer_12hz.encode(batch_audios)
             for code, line in zip(enc_res.audio_codes, batch_lines):
                 line["audio_codes"] = code.cpu().tolist()
                 final_lines.append(line)
+
+        # Cleanup
+        del tokenizer_12hz
+        time.sleep(3)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
 
         # Write output
         final_lines = [json.dumps(line, ensure_ascii=False) for line in final_lines]
@@ -310,16 +339,30 @@ class Qwen3TTSPipeline:
 
         print(f"Created {self.train_with_codes_jsonl}")
 
-        # Cleanup
-        del tokenizer_12hz
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
     def train_model(self) -> None:
         """Run the fine-tuning step."""
         print(f"\n{'='*60}")
         print("STEP 4: Fine-tuning model")
         print(f"{'='*60}\n")
+        
+
+        # Get the actual model path (could be HF cache or local)
+        from huggingface_hub import snapshot_download
+        if os.path.isdir(self.init_model_path):
+            model_cache_path = self.init_model_path
+        else:
+            # Download/get cached path for HuggingFace model
+            model_cache_path = snapshot_download(self.init_model_path)
+
+        # modify config to fit qwentts-0.6B
+        input_config_file = os.path.join(model_cache_path, "config.json")
+        with open(input_config_file, "r", encoding="utf-8") as f:
+            config_dict = json.load(f)
+        config_dict["talker_config"]["text_hidden_size"] = 2048
+        # config_dict["talker_config"]["text_hidden_size"] = 1024
+        config_dict["speaker_encoder_config"]["enc_dim"] = 1024
+        with open(input_config_file, "w", encoding="utf-8") as f:
+            json.dump(config_dict, f, indent=2, ensure_ascii=False)
 
         # Import training modules
         from dataset import TTSDataset
@@ -343,9 +386,14 @@ class Qwen3TTSPipeline:
         # Load model with detected attention implementation
         print(f"Loading model: {self.init_model_path}")
         print(f"Using attention implementation: {self.attn_implementation}")
+        time.sleep(3)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
         qwen3tts = Qwen3TTSModel.from_pretrained(
             self.init_model_path,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             attn_implementation=self.attn_implementation,
         )
 
@@ -403,7 +451,12 @@ class Qwen3TTSPipeline:
                     input_codec_ids = input_ids[:, :, 1]
 
                     input_text_embedding = (
-                        model.talker.model.text_embedding(input_text_ids)
+                        # for qwen3-tts-0.6B
+                        model.talker.text_projection(
+                            model.talker.model.text_embedding(input_text_ids)
+                        )
+                        # for qwen3-tts-1.7B
+                        # model.talker.model.text_embedding(input_text_ids)
                         * text_embedding_mask
                     )
                     input_codec_embedding = (
@@ -458,14 +511,6 @@ class Qwen3TTSPipeline:
                     str(self.output_dir), f"checkpoint-epoch-{epoch}"
                 )
 
-                # Get the actual model path (could be HF cache or local)
-                from huggingface_hub import snapshot_download
-                if os.path.isdir(self.init_model_path):
-                    model_cache_path = self.init_model_path
-                else:
-                    # Download/get cached path for HuggingFace model
-                    model_cache_path = snapshot_download(self.init_model_path)
-
                 shutil.copytree(model_cache_path, output_dir, dirs_exist_ok=True)
 
                 # Update config
@@ -513,6 +558,11 @@ class Qwen3TTSPipeline:
                 save_file(state_dict, save_path)
                 print(f"Saved checkpoint to {output_dir}")
 
+        time.sleep(3)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
         print("\nTraining complete!")
 
     def run(self) -> None:
@@ -527,17 +577,31 @@ class Qwen3TTSPipeline:
         # Validate inputs
         audio_files = self.validate_audio_files()
 
-        # Transcribe
-        transcription_results = self.transcribe_with_whisperx(audio_files)
+        if not os.path.exists(self.train_raw_jsonl):
+            # Transcribe
+            transcription_results = self.transcribe_with_whisperx(audio_files)
 
-        if not transcription_results:
-            raise ValueError("No transcriptions were generated. Please check your audio files.")
+            if not transcription_results:
+                raise ValueError("No transcriptions were generated. Please check your audio files.")
 
-        # Create JSONL
-        self.create_train_jsonl(transcription_results)
+            # Create JSONL
+            self.create_train_jsonl(transcription_results)
+        else:
+            print(f"\n{'=' * 60}")
+            print(
+                f"File '{self.train_raw_jsonl}' already present; skipping 'transcribe_with_whisperx()'"
+            )
+            print(f"{'=' * 60}\n")
 
-        # Prepare data
-        self.prepare_data()
+        if not os.path.exists(self.train_with_codes_jsonl):
+            # Prepare data
+            self.prepare_data()
+        else:
+            print(f"\n{'=' * 60}")
+            print(
+                f"File '{self.train_with_codes_jsonl}' already present; skipping 'prepare_data()'"
+            )
+            print(f"{'=' * 60}\n")
 
         # Train
         self.train_model()
@@ -597,7 +661,7 @@ def main():
     parser.add_argument(
         "--init_model_path",
         type=str,
-        default="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+        default="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
         help="Path to initial model for fine-tuning",
     )
 

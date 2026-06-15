@@ -1,0 +1,29 @@
+services:
+  tts-finetuner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tts-finetuner
+    # Shared memory size for DataLoader (crucial for both Linux and Windows/WSL2 training)
+    shm_size: '2gb'
+    ports:
+      - "127.0.0.1:7861:7860"
+    volumes:
+      # Use relative paths for better cross-platform support
+      - ./vc/final-dataset:/opt/final-dataset
+      - ./vc/output:/opt/output
+      - ./vc/models:/opt/models
+      - ./vc/raw-dataset:/opt/raw-dataset
+    tty: true
+
+    # GPU Support (Works on Linux with nvidia-container-toolkit and Windows with WSL2)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [ gpu ]
+
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all

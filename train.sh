@@ -23,46 +23,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# Function to check and install system dependencies
-check_system_deps() {
-    local missing_deps=()
-
-    # Check for sox
-    if ! command -v sox &> /dev/null; then
-        missing_deps+=("sox")
-    fi
-
-    if [ ${#missing_deps[@]} -gt 0 ]; then
-        echo -e "${YELLOW}Installing system dependencies: ${missing_deps[*]}${NC}"
-
-        # Try to install automatically (works on Debian/Ubuntu-based systems like RunPod)
-        if command -v apt-get &> /dev/null; then
-            apt-get update -qq && apt-get install -y -qq sox libsox-fmt-all 2>/dev/null || {
-                echo -e "${RED}Could not auto-install. Please run manually:${NC}"
-                echo -e "  sudo apt-get install sox libsox-fmt-all"
-                exit 1
-            }
-            echo -e "${GREEN}System dependencies installed${NC}"
-        else
-            echo -e "${RED}Please install system dependencies manually:${NC}"
-            echo -e "  sox libsox-fmt-all"
-            exit 1
-        fi
-    fi
-}
-
-# Check system dependencies first (needed on every RunPod start)
-check_system_deps
 
 # Function to check if environment is ready
 check_environment_ready() {
-    # Check if venv exists
-    if [ ! -d "$VENV_DIR" ]; then
-        return 1
-    fi
 
     # Check if key dependencies are installed
-    if ! "$VENV_DIR/bin/python" -c "import torch; import whisperx; import qwen_tts" 2>/dev/null; then
+    if ! "uv run python" -c "import torch; import whisperx; import qwen_tts" 2>/dev/null; then
         return 1
     fi
 
@@ -76,7 +42,7 @@ SPEAKER_NAME="my_speaker"
 OUTPUT_DIR="./output"
 DEVICE="cuda:0"
 TOKENIZER_MODEL_PATH="Qwen/Qwen3-TTS-Tokenizer-12Hz"
-INIT_MODEL_PATH="Qwen/Qwen3-TTS-12Hz-1.7B-Base"
+INIT_MODEL_PATH="Qwen/Qwen3-TTS-12Hz-0.6B-Base"
 BATCH_SIZE=2
 LR=2e-5
 EPOCHS=3
@@ -183,13 +149,10 @@ if ! check_environment_ready; then
 fi
 
 # Configure HuggingFace cache before activating venv
-export HF_HOME="$VENV_DIR/hf_cache"
+export HF_HOME="/opt/models/hf_cache"
 
 # Create cache directory if it doesn't exist
 mkdir -p "$HF_HOME"
-
-# Activate venv
-source "$VENV_DIR/bin/activate"
 
 # Print configuration
 echo "=========================================="
@@ -210,7 +173,7 @@ echo "=========================================="
 echo ""
 
 # Run the Python script
-python "$SCRIPT_DIR/train_from_audio.py" \
+uv run "$SCRIPT_DIR/train_from_audio.py" \
     --audio_dir "$AUDIO_DIR" \
     --ref_audio "$REF_AUDIO" \
     --speaker_name "$SPEAKER_NAME" \
