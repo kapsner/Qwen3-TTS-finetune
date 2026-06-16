@@ -24,6 +24,9 @@ services:
             - driver: nvidia
               count: all
               capabilities: [ gpu ]
+    
+    # for debugging/ inference
+    command: sh -c "tail -f /dev/null"
 
     environment:
       - NVIDIA_VISIBLE_DEVICES=all

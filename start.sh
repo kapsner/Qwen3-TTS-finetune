@@ -6,7 +6,7 @@
     --speaker_name my_voice \
     --output_dir /opt/output \
     --batch_size 2 \
-    --lr 2e-5 \
-    --epochs 3 \
+    --lr 1e-8 \
+    --epochs 5 \
     --whisper_model large-v3 \
     --language de

@@ -187,6 +187,13 @@ output/
 └── train_with_codes.jsonl  # Data with audio codes
 ```
 
+<!--
+inference_txt = [
+  """Franz jagt im komplett verwahrlosten Taxi quer durch Bayern. Zwölf Boxkämpfer jagen Viktor quer über den großen Sylter Deich. Die Bäume blühen im August besonders schön, während die Eulen heulen. Papas bunte Postkarten kamen gestern trotz des starken Regens pünktlich an. Die heiße Zypernsonne quälte Max und Victoria ja böse auf dem Weg bis zur Küste. Sechs sächsische Schornsteinfeger suchen nach frischem Schmalz. Bei jedem klugen Wort von Sokrates rief Xanthippe zynisch: Quatsch! Jeder wackere Bayer vertilgt bequem zwo Pfund Kalbshaxen. Prall vom Whisky flog Quax den Jet zu Bruch. Jörg bäckt quasi zwei Haxenfüße vom Wildpony.""",
+  """Einst stritten sich Nordwind und Sonne, wer von ihnen beiden wohl der Stärkere wäre, als ein Wanderer, der in einen warmen Mantel gehüllt war, des Weges daherkam. Sie wurden einig, dass derjenige für den Stärkeren gelten sollte, der den Wanderer zwingen würde, seinen Mantel abzunehmen. Der Nordwind blies mit aller Macht, aber je mehr er blies, desto fester hüllte sich der Wanderer in seinen Mantel ein. Endlich gab der Nordwind den Kampf auf. Nun erwärmte die Sonne die Luft mit ihren freundlichen Strahlen, und schon nach wenigen Augenblicken zog der Wanderer seinen Mantel aus. Da musste der Nordwind zugeben, dass die Sonne von ihnen beiden der Stärkere war."""
+]
+-->
+
 ## Inference
 
 After training, use your fine-tuned model:
@@ -195,20 +202,50 @@ After training, use your fine-tuned model:
 import torch
 import soundfile as sf
 from qwen_tts import Qwen3TTSModel
+import gc
+import time
 
 device = "cuda:0"
-tts = Qwen3TTSModel.from_pretrained(
-    "output/checkpoint-epoch-2",
-    device_map=device,
-    dtype=torch.bfloat16,
-    # Uses flash_attention_2 if available, falls back to eager
-)
 
-wavs, sr = tts.generate_custom_voice(
-    text="Hello, this is a test.",
-    speaker="my_voice",
-)
-sf.write("output.wav", wavs[0], sr)
+inference_txt = [
+    "Hallo, das ist ein besonders toller Test.",
+    "Mir gefällt gut, was ich hier höre."
+]
+instruct_txt = [
+    "Very happy.",
+    "Sad."
+]
+
+for i in range(0, 3):
+    ckpt_name = f"/opt/output/checkpoint-epoch-{i}"
+    print(f"Using {ckpt_name} for inference.")
+    # load model
+    model = Qwen3TTSModel.from_pretrained(
+        ckpt_name,
+        device_map=device,
+        dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+        # Uses flash_attention_2 if available, falls back to eager
+    )
+    # Set high matrix multiplication precision for Ampere+ GPUs
+    torch.set_float32_matmul_precision('high')
+    # Compile the core sub-modules of Qwen3-TTS
+    # model.model = torch.compile(model.model, mode="reduce-overhead")
+    model.model = torch.compile(model.model, mode="max-autotune")
+    # generate
+    wavs, sr = model.generate_custom_voice(
+        text=inference_txt,
+        speaker="my_voice",
+        instruct=instruct_txt,
+    )
+    # save audio
+    sf.write(f"/opt/output/test{i}1.wav", wavs[0], sr)
+    sf.write(f"/opt/output/test{i}2.wav", wavs[1], sr)
+    time.sleep(3)
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
 ```
 
 ## Tips for Best Results
