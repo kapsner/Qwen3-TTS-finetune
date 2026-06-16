@@ -44,18 +44,24 @@ def train():
     parser.add_argument("--lr", type=float, default=2e-5)
     parser.add_argument("--num_epochs", type=int, default=3)
     parser.add_argument("--speaker_name", type=str, default="speaker_test")
+    parser.add_argument("--attn_implementation", type=str, default="flash_attention_2")
     args = parser.parse_args()
 
+    logging_dir = os.path.join(args.output_model_path, "logs")
+    os.makedirs(name=logging_dir, exist_ok=True)
     accelerator = Accelerator(
-        gradient_accumulation_steps=4, mixed_precision="bf16", log_with="tensorboard"
+        gradient_accumulation_steps=4,
+        mixed_precision="bf16",
+        log_with="tensorboard",
+        project_dir=str(logging_dir),
     )
 
     MODEL_PATH = args.init_model_path
 
     qwen3tts = Qwen3TTSModel.from_pretrained(
         MODEL_PATH,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
+        dtype=torch.bfloat16,
+        attn_implementation=args.attn_implementation,
     )
     config = AutoConfig.from_pretrained(MODEL_PATH)
 
@@ -96,10 +102,12 @@ def train():
                 input_text_ids = input_ids[:, :, 0]
                 input_codec_ids = input_ids[:, :, 1]
 
-                input_text_embedding = (
-                    model.talker.model.text_embedding(input_text_ids)
-                    * text_embedding_mask
-                )
+                input_txt_embed_temp = model.talker.model.text_embedding(input_text_ids)
+                if "0.6B" in MODEL_PATH:
+                    input_txt_embed_temp = model.talker.text_projection(
+                        input_txt_embed_temp
+                    )
+                input_text_embedding = input_txt_embed_temp * text_embedding_mask
                 input_codec_embedding = (
                     model.talker.model.codec_embedding(input_codec_ids)
                     * codec_embedding_mask

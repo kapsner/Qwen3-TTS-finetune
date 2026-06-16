@@ -31,6 +31,8 @@ AudioLike = Union[
 
 MaybeList = Union[Any, List[Any]]
 
+SAMPLING_RATE = 24000
+
 
 class TTSDataset(Dataset):
     def __init__(self, data_list, processor, config: Qwen3TTSConfig, lag_num=-1):
@@ -44,12 +46,20 @@ class TTSDataset(Dataset):
 
     def _load_audio_to_np(self, x: str) -> Tuple[np.ndarray, int]:
 
-        audio, sr = librosa.load(x, sr=None, mono=True)
+        audio, sr = librosa.load(x, sr=SAMPLING_RATE, mono=True)
 
         if audio.ndim > 1:
             audio = np.mean(audio, axis=-1)
+        
+        audio_out = audio.astype(np.float32)
+        
+        # append 1 second of silence as recommended here:
+        # https://github.com/QwenLM/Qwen3-TTS/issues/39#issuecomment-3796970246
+        duration_sec = 1.4
+        silence = np.zeros(int(sr * duration_sec), dtype=audio.dtype)
+        audio_out = np.concatenate([audio_out, silence])
 
-        return audio.astype(np.float32), int(sr)
+        return audio_out, int(sr)
 
     def _normalize_audio_inputs(
         self, audios: Union[AudioLike, List[AudioLike]]
@@ -105,12 +115,12 @@ class TTSDataset(Dataset):
 
     @torch.inference_mode()
     def extract_mels(self, audio, sr):
-        assert sr == 24000, "Only support 24kHz audio"
+        assert sr == SAMPLING_RATE, "Only support 24kHz audio"
         mels = mel_spectrogram(
             torch.from_numpy(audio).unsqueeze(0),
             n_fft=1024,
             num_mels=128,
-            sampling_rate=24000,
+            sampling_rate=SAMPLING_RATE,
             hop_size=256,
             win_size=1024,
             fmin=0,
