@@ -216,7 +216,7 @@ instruct_txt = [
     "Sad."
 ]
 
-for i in range(0, 3):
+for i in range(0, 5):
     ckpt_name = f"/opt/output/checkpoint-epoch-{i}"
     print(f"Using {ckpt_name} for inference.")
     # load model
@@ -235,7 +235,7 @@ for i in range(0, 3):
     # generate
     wavs, sr = model.generate_custom_voice(
         text=inference_txt,
-        speaker="my_voice",
+        speaker="aiden",
         instruct=instruct_txt,
     )
     # save audio
