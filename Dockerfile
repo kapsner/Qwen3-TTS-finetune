@@ -51,7 +51,8 @@ RUN uv pip install --system --break-system-packages \
     faster-whisper \
     av \
     pyannote-audio \
-    omegaconf
+    omegaconf \
+    tensorboard
 
 RUN apt-get update && apt-get install -y \
     libcublas-12-0 && \

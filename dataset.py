@@ -55,7 +55,7 @@ class TTSDataset(Dataset):
         
         # append 1 second of silence as recommended here:
         # https://github.com/QwenLM/Qwen3-TTS/issues/39#issuecomment-3796970246
-        duration_sec = 1.4
+        duration_sec = 1.1
         silence = np.zeros(int(sr * duration_sec), dtype=audio.dtype)
         audio_out = np.concatenate([audio_out, silence])
 
