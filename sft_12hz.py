@@ -55,6 +55,10 @@ def train():
         log_with="tensorboard",
         project_dir=str(logging_dir),
     )
+    num_epochs = args.num_epochs
+
+    hps = {"num_iterations": num_epochs, "learning_rate": args.lr}
+    accelerator.init_trackers(f"ft-lr-{args.lr}", config=hps)
 
     MODEL_PATH = args.init_model_path
 
@@ -78,7 +82,6 @@ def train():
         qwen3tts.model, optimizer, train_dataloader
     )
 
-    num_epochs = args.num_epochs
     model.train()
 
     for epoch in range(num_epochs):
@@ -152,9 +155,12 @@ def train():
                 optimizer.step()
                 optimizer.zero_grad()
 
+            # log
+            loss_log = loss.item()
+            accelerator.log({"train_loss": loss_log}, step=step)
             if step % 10 == 0:
                 accelerator.print(
-                    f"Epoch {epoch} | Step {step} | Loss: {loss.item():.4f}"
+                    f"Epoch {epoch} | Step {step} | Loss: {loss_log:.4f}"
                 )
 
         if accelerator.is_main_process:
@@ -192,6 +198,9 @@ def train():
             )
             save_path = os.path.join(output_dir, "model.safetensors")
             save_file(state_dict, save_path)
+    
+    # end training
+    accelerator.end_training()
 
 
 if __name__ == "__main__":

@@ -10,7 +10,6 @@ services:
       - "127.0.0.1:7861:7860"
     volumes:
       # Use relative paths for better cross-platform support
-      - ./vc/final-dataset:/opt/final-dataset
       - ./vc/output:/opt/output
       - ./vc/models:/opt/models
       - ./vc/raw-dataset:/opt/raw-dataset
