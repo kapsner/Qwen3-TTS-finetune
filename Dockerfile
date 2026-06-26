@@ -65,6 +65,7 @@ ADD sft_12hz.py /opt/
 ADD train.sh /opt/
 ADD train_from_audio.py /opt/
 ADD start.sh /opt/
+ADD test.py /opt/
 
 RUN chmod +x /opt/*.sh
 

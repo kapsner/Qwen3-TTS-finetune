@@ -353,13 +353,16 @@ class Qwen3TTSPipeline:
             # Download/get cached path for HuggingFace model
             model_cache_path = snapshot_download(self.init_model_path)
 
+        print(f"Model path: {model_cache_path}")
         # modify config to fit qwentts-0.6B
         input_config_file = os.path.join(model_cache_path, "config.json")
         with open(input_config_file, "r", encoding="utf-8") as f:
             config_dict = json.load(f)
-        config_dict["talker_config"]["text_hidden_size"] = 2048
-        # config_dict["talker_config"]["text_hidden_size"] = 1024
-        config_dict["speaker_encoder_config"]["enc_dim"] = 1024
+        #if "0.6B" in str(model_cache_path):
+        #    config_dict["talker_config"]["text_hidden_size"] = 2048
+        #elif "1.7B" in str(model_cache_path):
+        #    config_dict["talker_config"]["text_hidden_size"] = 1024
+        #config_dict["speaker_encoder_config"]["enc_dim"] = 1024
         with open(input_config_file, "w", encoding="utf-8") as f:
             json.dump(config_dict, f, indent=2, ensure_ascii=False)
 
@@ -497,7 +500,7 @@ def main():
     parser.add_argument(
         "--init_model_path",
         type=str,
-        default="Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+        default="Qwen/Qwen3-TTS-12Hz-1.7B-Base",
         help="Path to initial model for fine-tuning",
     )
 

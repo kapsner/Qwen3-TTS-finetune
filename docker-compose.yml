@@ -25,7 +25,7 @@ services:
               capabilities: [ gpu ]
     
     # for debugging/ inference
-    # command: sh -c "tail -f /dev/null"
+    # command: python test.py
 
     environment:
       - NVIDIA_VISIBLE_DEVICES=all

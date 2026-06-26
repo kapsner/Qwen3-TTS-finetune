@@ -8,7 +8,7 @@
     --output_dir /opt/output \
     --batch_size 2 \
     --lr 5e-10 \
-    --epochs 5 \
+    --epochs 3 \
     --whisper_model large-v3 \
     --language de
 
@@ -18,3 +18,5 @@
 # - 1e-9 also very good
 # - 5e-10 also very good (current favourit)
 # - 1e-10 ?
+
+python test.py
